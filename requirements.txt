@@ -1,0 +1,32 @@
+# WhatsApp MCP Server Requirements
+# Python version: >=3.13
+
+# Core MCP dependencies
+mcp[cli]>=1.6.0
+
+# HTTP and networking
+httpx>=0.28.1
+requests>=2.32.3
+
+# Database
+sqlite3  # Built-in with Python, no need to install
+
+# Data processing and utilities
+typing  # Built-in with Python, no need to install
+datetime  # Built-in with Python, no need to install
+json  # Built-in with Python, no need to install
+
+# Optional: For enhanced functionality
+# flask>=3.0.0  # Uncomment if you want to add HTTP server capabilities
+# pandas>=2.0.0  # Uncomment if you want data analysis features
+# streamlit>=1.28.0  # Uncomment if you want to create a web dashboard
+
+# Development dependencies (optional)
+# pytest>=7.0.0  # For testing
+# black>=23.0.0  # For code formatting
+# flake8>=6.0.0  # For linting
+
+# Installation instructions:
+# 1. Using pip: pip install -r requirements.txt
+# 2. Using uv: uv pip install -r requirements.txt
+# 3. Using conda: conda install --file requirements.txt
