@@ -1,44 +1,63 @@
-from pinecone import Pinecone, ServerlessSpec
-from openai import OpenAI
-import os
+from datetime import datetime
+import time
+import streamlit as st
 
-def embed_text(text: str, client):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
-
-def save_to_pinecone(index, qna_pairs, metadata, client):
-    vectors = []
-    for pair in qna_pairs:
-        q = pair["prompt"].replace("Q: ", "").strip()
-        a = pair["completion"].replace("A: ", "").strip()
-        text_for_embedding = q + " " + a
-
-        # Use jid + timestamp as unique ID
-        timestamp = metadata.get("timestamp")
-        vector_id = f"{metadata['group_jid']}_{timestamp}"
-
-        vectors.append({
-            "id": vector_id,  # unique id per message timestamp
-            "values": embed_text(text_for_embedding, client),
-            "metadata": {
-                "question": q,
-                "answer": a,
-                "group": metadata.get("group"),
-                "sender": metadata.get("sender"),
-                "timestamp": timestamp
-            }
-        })
-
-    index.upsert(vectors)
-
-def query_pinecone(index, user_query, client, top_k=5):
-    query_embedding = embed_text(user_query, client)
-    results = index.query(
-        vector=query_embedding,
-        top_k=top_k,
-        include_metadata=True
-    )
-    return results.matches
+def store_in_knowledge_base(selected_group):
+    """Store Q&A pairs in Pinecone knowledge base"""
+    if not hasattr(st.session_state, 'extractor_qna_pairs') or not st.session_state.extractor_qna_pairs:
+        st.error("❌ No Q&A pairs available to store. Generate Q&A pairs first.")
+        return
+    
+    with st.spinner("Storing Q&A pairs in knowledge base..."):
+        try:
+            # Generate embeddings and store in batches
+            batch_size = 100  # more optimal
+            total_stored = 0
+            progress_bar = st.progress(0)
+            
+            for i in range(0, len(st.session_state.extractor_qna_pairs), batch_size):
+                batch = st.session_state.extractor_qna_pairs[i:i + batch_size]
+                batch_texts = []
+                
+                # Prepare texts for embedding
+                for qna in batch:
+                    qa_text = f"{qna['prompt']}{qna['completion']}"
+                    metadata = {
+                        "group_name": selected_group["name"],
+                        "group_jid": selected_group["jid"],
+                        "prompt": qna["prompt"],
+                        "completion": qna["completion"],
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    batch_texts.append((qa_text, metadata))
+                
+                # Generate embeddings
+                texts = [text for text, _ in batch_texts]
+                response = st.session_state.openai_client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=texts
+                )
+                embeddings = [v.embedding for v in response.data]
+                
+                # Prepare vectors for Pinecone (no timestamp in ID)
+                vectors = []
+                for j, (text, metadata) in enumerate(batch_texts):
+                    vectors.append((
+                        f"{selected_group['jid']}_{i+j}",  # unique ID without hashing/time
+                        embeddings[j],
+                        metadata
+                    ))
+                
+                # Store in Pinecone
+                st.session_state.pinecone_index.upsert(vectors=vectors)
+                total_stored += len(vectors)
+                
+                # Update progress
+                progress = (i + len(batch)) / len(st.session_state.extractor_qna_pairs)
+                progress_bar.progress(progress)
+            
+            progress_bar.empty()
+            st.success(f"✅ Successfully stored {total_stored} Q&A pairs in the knowledge base!")
+            
+        except Exception as e:
+            st.error(f"❌ Failed to store Q&A pairs: {str(e)}")
